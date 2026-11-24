@@ -1,0 +1,285 @@
+openapi: 3.0.3
+info:
+  title: ВышBuild API Gateway
+  version: 1.0.0
+  description: |
+    Единая точка входа. Gateway синхронно вызывает File Storing Service (файлы и сдачи)
+    и File Analysis Service (проверка «на сборку» и отчёты).
+    Если сервис недоступен, ответ — 503 с JSON `{"error": "...", "service": "..."}`.
+servers:
+  - url: http://localhost:8000
+
+tags:
+  - name: Сдачи
+  - name: Отчёты
+  - name: Служебное
+
+paths:
+  /submissions:
+    post:
+      tags: [Сдачи]
+      summary: Сдать работу (сохранить файл и сразу проверить)
+      description: Gateway -> File Storing (сохранить) -> File Analysis (проверить) -> ответ клиенту.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [student, assignment_id, file]
+              properties:
+                student:
+                  type: string
+                  example: Иванов Иван
+                assignment_id:
+                  type: string
+                  example: hw-1
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Сдача сохранена и проверена
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  submission: { $ref: "#/components/schemas/Submission" }
+                  report: { $ref: "#/components/schemas/Report" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "503":
+          description: |
+            Один из сервисов недоступен. Если упал File Storing — сдача не сохранена.
+            Если упал File Analysis — сдача сохранена (есть в поле submission), отчёта нет,
+            проверку можно повторить по адресу из поля retry.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnalysisFailed" }
+
+  /submissions/{submission_id}:
+    get:
+      tags: [Сдачи]
+      summary: Информация о сдаче
+      parameters: [{ $ref: "#/components/parameters/SubmissionId" }]
+      responses:
+        "200":
+          description: Сдача
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Submission" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /submissions/{submission_id}/file:
+    get:
+      tags: [Сдачи]
+      summary: Скачать сданный файл
+      parameters: [{ $ref: "#/components/parameters/SubmissionId" }]
+      responses:
+        "200":
+          description: Файл
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /submissions/{submission_id}/analyze:
+    post:
+      tags: [Сдачи]
+      summary: Повторно запустить проверку сдачи
+      description: Нужно, если в момент сдачи File Analysis Service был недоступен.
+      parameters: [{ $ref: "#/components/parameters/SubmissionId" }]
+      responses:
+        "201":
+          description: Новый отчёт
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  submission: { $ref: "#/components/schemas/Submission" }
+                  report: { $ref: "#/components/schemas/Report" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /submissions/{submission_id}/reports:
+    get:
+      tags: [Отчёты]
+      summary: Все отчёты по сдаче (свежие первыми)
+      parameters: [{ $ref: "#/components/parameters/SubmissionId" }]
+      responses:
+        "200":
+          description: Отчёты
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  submission_id: { type: string }
+                  reports:
+                    type: array
+                    items: { $ref: "#/components/schemas/Report" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /reports/{report_id}:
+    get:
+      tags: [Отчёты]
+      summary: Отчёт по id
+      parameters:
+        - name: report_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Отчёт
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Report" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /assignments/{assignment_id}/reports:
+    get:
+      tags: [Отчёты]
+      summary: Сводка для преподавателя по заданию
+      parameters:
+        - name: assignment_id
+          in: path
+          required: true
+          schema: { type: string }
+          example: hw-1
+      responses:
+        "200":
+          description: Сводка
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssignmentSummary" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /health:
+    get:
+      tags: [Служебное]
+      summary: Состояние gateway и сервисов
+      responses:
+        "200":
+          description: Все сервисы работают
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: Хотя бы один сервис недоступен
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+components:
+  parameters:
+    SubmissionId:
+      name: submission_id
+      in: path
+      required: true
+      schema: { type: string }
+
+  responses:
+    BadRequest:
+      description: Не хватает полей (student, assignment_id, file)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Не найдено
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    TooLarge:
+      description: Файл больше 20 МБ
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unavailable:
+      description: Нужный сервис недоступен или не ответил вовремя
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string, example: File Storing Service недоступен (не запущен или упал) }
+        service: { type: string, example: file_storing }
+
+    AnalysisFailed:
+      type: object
+      properties:
+        error: { type: string, example: "Работа сохранена, но проверка не выполнена: File Analysis Service недоступен (не запущен или упал)" }
+        service: { type: string, example: file_analysis }
+        submission: { $ref: "#/components/schemas/Submission" }
+        report: { type: object, nullable: true, example: null }
+        retry: { type: string, example: POST /submissions/42479987be4a41009111711cb858ed04/analyze }
+
+    Submission:
+      type: object
+      properties:
+        id: { type: string, example: 42479987be4a41009111711cb858ed04 }
+        student: { type: string, example: Иванов Иван }
+        assignment_id: { type: string, example: hw-1 }
+        filename: { type: string, example: good_python_project.zip }
+        size: { type: integer, example: 618 }
+        sha256: { type: string }
+        uploaded_at: { type: string, example: "2026-11-24T10:04:20+00:00" }
+
+    Check:
+      type: object
+      properties:
+        name: { type: string, example: python_syntax }
+        passed: { type: boolean }
+        required: { type: boolean, description: "false — предупреждение, на итог не влияет" }
+        message: { type: string, example: "Python-файлов без синтаксических ошибок: 2" }
+
+    Report:
+      type: object
+      properties:
+        id: { type: string }
+        submission_id: { type: string }
+        student: { type: string }
+        assignment_id: { type: string }
+        filename: { type: string }
+        status: { type: string, enum: [success, failed] }
+        is_success: { type: boolean }
+        language: { type: string, nullable: true, example: Python }
+        checks:
+          type: array
+          items: { $ref: "#/components/schemas/Check" }
+        created_at: { type: string }
+
+    AssignmentSummary:
+      type: object
+      properties:
+        assignment_id: { type: string, example: hw-1 }
+        total: { type: integer, example: 3 }
+        success: { type: integer, example: 2 }
+        failed: { type: integer, example: 1 }
+        reports:
+          type: array
+          items:
+            type: object
+            properties:
+              report_id: { type: string }
+              submission_id: { type: string }
+              student: { type: string }
+              filename: { type: string }
+              status: { type: string, enum: [success, failed] }
+              is_success: { type: boolean }
+              created_at: { type: string }
+
+    Health:
+      type: object
+      properties:
+        gateway: { type: string, example: ok }
+        file_storing: { type: string, example: ok }
+        file_analysis: { type: string, example: unavailable }
