@@ -1,0 +1,311 @@
+{
+  "info": {
+    "name": "ВышBuild",
+    "description": "Все ключевые API через Gateway (http://localhost:8000). Сначала выполните «Сдать работу» — id сдачи и отчёта сохранятся в переменные коллекции и подставятся в остальные запросы. Файлы для загрузки лежат в папке examples/.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "submission_id",
+      "value": ""
+    },
+    {
+      "key": "report_id",
+      "value": ""
+    },
+    {
+      "key": "assignment_id",
+      "value": "hw-1"
+    }
+  ],
+  "item": [
+    {
+      "name": "Состояние сервисов",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "health"
+          ]
+        },
+        "description": "200 — всё работает, 503 — видно, какой сервис лежит."
+      }
+    },
+    {
+      "name": "Сдачи",
+      "item": [
+        {
+          "name": "Сдать работу (хороший проект)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/submissions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "submissions"
+              ]
+            },
+            "description": "Студент сдаёт работу. Gateway -> Store (сохранить) -> Analysis (проверить). В поле file выберите examples/good_python_project.zip.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "student",
+                  "value": "Иванов Иван",
+                  "type": "text"
+                },
+                {
+                  "key": "assignment_id",
+                  "value": "{{assignment_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "",
+                  "description": "examples/good_python_project.zip"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Сдача создана (201)', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "if (body.submission) { pm.collectionVariables.set('submission_id', body.submission.id); }",
+                  "if (body.report) { pm.collectionVariables.set('report_id', body.report.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Сдать работу (сломанный проект)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/submissions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "submissions"
+              ]
+            },
+            "description": "Тот же сценарий, но проверка не проходит. В поле file выберите examples/syntax_error_project.zip (или readme_only.zip, empty.zip, notes.txt).",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "student",
+                  "value": "Петров Пётр",
+                  "type": "text"
+                },
+                {
+                  "key": "assignment_id",
+                  "value": "{{assignment_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "",
+                  "description": "examples/syntax_error_project.zip"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Сдача создана (201)', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "if (body.submission) { pm.collectionVariables.set('submission_id', body.submission.id); }",
+                  "if (body.report) { pm.collectionVariables.set('report_id', body.report.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Сдать без файла (ошибка 400)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/submissions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "submissions"
+              ]
+            },
+            "description": "Пример понятной ошибки валидации.",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "student",
+                  "value": "Иванов Иван",
+                  "type": "text"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Информация о сдаче",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/submissions/{{submission_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "submissions",
+                "{{submission_id}}"
+              ]
+            },
+            "description": "Метаданные сдачи из File Storing."
+          }
+        },
+        {
+          "name": "Скачать файл сдачи",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/submissions/{{submission_id}}/file",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "submissions",
+                "{{submission_id}}",
+                "file"
+              ]
+            },
+            "description": "Сам артефакт из File Storing."
+          }
+        },
+        {
+          "name": "Повторить проверку",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/submissions/{{submission_id}}/analyze",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "submissions",
+                "{{submission_id}}",
+                "analyze"
+              ]
+            },
+            "description": "Если при сдаче File Analysis был недоступен — запускаем проверку заново."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Сдача создана (201)', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "if (body.submission) { pm.collectionVariables.set('submission_id', body.submission.id); }",
+                  "if (body.report) { pm.collectionVariables.set('report_id', body.report.id); }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Отчёты",
+      "item": [
+        {
+          "name": "Отчёты по сдаче",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/submissions/{{submission_id}}/reports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "submissions",
+                "{{submission_id}}",
+                "reports"
+              ]
+            },
+            "description": "Все отчёты сдачи, свежие первыми."
+          }
+        },
+        {
+          "name": "Отчёт по id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/reports/{{report_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "reports",
+                "{{report_id}}"
+              ]
+            },
+            "description": "Полный отчёт со списком проверок."
+          }
+        },
+        {
+          "name": "Сводка по заданию (преподаватель)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/assignments/{{assignment_id}}/reports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "assignments",
+                "{{assignment_id}}",
+                "reports"
+              ]
+            },
+            "description": "Статусы всех сдач по заданию и сколько собралось / не собралось."
+          }
+        }
+      ]
+    }
+  ]
+}

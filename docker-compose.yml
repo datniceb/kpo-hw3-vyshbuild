@@ -1,0 +1,49 @@
+services:
+  file-storing:
+    build: ./file_storing_service
+    environment:
+      PORT: "8001"
+      DATA_DIR: /data
+      MAX_FILE_MB: "20"
+    volumes:
+      - store_data:/data # свои данные: файлы + store.db
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  file-analysis:
+    build: ./file_analysis_service
+    environment:
+      PORT: "8002"
+      DATA_DIR: /data
+      STORE_URL: http://file-storing:8001
+      REQUEST_TIMEOUT: "10"
+    volumes:
+      - analysis_data:/data # свои данные: analysis.db с отчётами
+    depends_on:
+      - file-storing
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  gateway:
+    build: ./gateway
+    environment:
+      PORT: "8000"
+      STORE_URL: http://file-storing:8001
+      ANALYSIS_URL: http://file-analysis:8002
+      REQUEST_TIMEOUT: "30"
+      MAX_FILE_MB: "20"
+    ports:
+      - "8000:8000" # наружу открыт только gateway
+    depends_on:
+      - file-storing
+      - file-analysis
+
+volumes:
+  store_data:
+  analysis_data:
